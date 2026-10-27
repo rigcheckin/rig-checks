@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rig Checks</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#eef0f1;--panel:#fff;--ink:#16202a;--muted:#5b6671;--line:#d3d8dc;
+  --trim:#d9e43c;--trim-ink:#16202a;--alarm:#b3261e;--khaki:#a58b5c;--ok:#2e7d32;
+  box-sizing:border-box;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--paper:#10161c;--panel:#18212a;--ink:#e8ecef;--muted:#93a0ab;--line:#2c3844;--alarm:#ff6b60;--ok:#66bb6a}}
+:root[data-theme="dark"]{--paper:#10161c;--panel:#18212a;--ink:#e8ecef;--muted:#93a0ab;--line:#2c3844;--alarm:#ff6b60;--ok:#66bb6a}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 16px/1.5 Barlow,system-ui,sans-serif}
+h1,h2,h3{font-family:"Barlow Condensed","Arial Narrow",sans-serif;margin:0;letter-spacing:.01em}
+header{background:#16202a;color:#fff;padding:18px 20px 0;border-bottom:6px solid var(--trim);position:relative}
+header h1{font-size:34px;font-weight:700;line-height:1}
+header p{margin:4px 0 14px;color:#b9c3cc;font-size:14px}
+.wrap{max-width:900px;margin:0 auto}
+.hbar{position:absolute;top:14px;right:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;max-width:70%}
+.hbtn{font:600 14px Barlow,system-ui,sans-serif;background:transparent;color:#fff;border:1px solid #5d6b78;border-radius:4px;padding:5px 10px;cursor:pointer}
+.hbtn:hover{border-color:var(--trim)}
+.pill{font:600 12px Barlow,system-ui,sans-serif;border-radius:10px;padding:2px 9px;background:#3a4753;color:#dfe6ec}
+.pill.on{background:var(--trim);color:var(--trim-ink)}
+#sync{font-size:12px;color:#b9c3cc}
+#pw{position:absolute;top:52px;right:16px;z-index:5;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:12px;width:min(290px,calc(100% - 32px));box-shadow:0 6px 18px rgba(0,0,0,.25)}
+#pw[hidden]{display:none}
+nav{display:flex;gap:4px;max-width:900px;margin:0 auto;overflow-x:auto}
+nav button{flex:1 0 auto;font:600 18px "Barlow Condensed",sans-serif;background:transparent;color:#b9c3cc;border:0;padding:10px 14px;cursor:pointer;border-bottom:4px solid transparent}
+nav button[aria-selected="true"]{color:#fff;border-bottom-color:var(--trim)}
+nav button[hidden]{display:none}
+main{max-width:900px;margin:0 auto;padding:20px 16px 48px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px;margin-bottom:16px}
+.card h2{font-size:24px;margin-bottom:10px}
+label{display:block;font-size:14px;font-weight:600;margin-bottom:10px}
+input,select,textarea{width:100%;font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:4px;padding:9px 10px;margin-top:4px}
+textarea{min-height:70px}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var(--khaki);outline-offset:1px}
+.btn{font:700 18px "Barlow Condensed",sans-serif;letter-spacing:.03em;background:var(--trim);color:var(--trim-ink);border:0;border-radius:4px;padding:9px 18px;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.x{background:none;border:0;color:var(--alarm);cursor:pointer;font:600 14px Barlow,sans-serif;padding:6px}
+.sm{background:transparent;border:1px solid var(--line);color:var(--ink);border-radius:4px;cursor:pointer;font:600 13px Barlow,sans-serif;padding:5px 8px}
+.empty,.note{color:var(--muted)}
+.note{font-size:13px}
+.banner{background:var(--trim);color:var(--trim-ink);padding:8px 12px;border-radius:4px;font-size:14px;margin-bottom:16px}
+.banner.err{background:var(--alarm);color:#fff}
+.banner button{color:inherit;text-decoration:underline}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.rig{background:var(--panel);border:1px solid var(--line);border-left:6px solid var(--line);border-radius:6px;padding:12px 14px}
+.rig.ok{border-left-color:var(--ok)}.rig.bad{border-left-color:var(--alarm)}.rig.late{border-left-color:var(--khaki)}
+.rig h3{font-size:26px}
+.st{font:700 14px Barlow,sans-serif}
+.st.ok{color:var(--ok)}.st.bad{color:var(--alarm)}.st.late{color:var(--khaki)}
+.prob{color:var(--alarm);font-size:14px;margin:2px 0}
+details{border-top:1px solid var(--line)}
+details:first-of-type{border-top:0}
+summary{cursor:pointer;padding:12px 0;display:flex;justify-content:space-between;gap:12px;align-items:baseline;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary b{font:700 20px "Barlow Condensed",sans-serif}
+summary span{color:var(--muted);font-size:14px}
+.fitem{border-top:1px solid var(--line);padding:10px 0}
+.fitem:first-of-type{border-top:0}
+.ilabel{font-weight:600}
+.seg{display:flex;gap:8px;margin:6px 0}
+.seg label{margin:0}
+.seg input{position:absolute;opacity:0;width:1px;height:1px}
+.seg span{display:inline-block;min-width:88px;text-align:center;padding:9px 14px;border:2px solid var(--line);border-radius:4px;font-weight:700;cursor:pointer;background:var(--paper)}
+.seg .o input:checked+span{background:var(--ok);border-color:var(--ok);color:#fff}
+.seg .p input:checked+span{background:var(--alarm);border-color:var(--alarm);color:#fff}
+.seg input:focus-visible+span{outline:3px solid var(--khaki)}
+.fitem input[type=text]{margin-top:2px}
+.fitem.miss{background:rgba(179,38,30,.10);margin:0 -8px;padding:10px 8px}
+.chk{display:inline-flex;gap:8px;align-items:center;margin:0 14px 10px 0;font-weight:500}
+.chk input{width:20px;height:20px;margin:0;accent-color:var(--ink)}
+.sec{border:1px solid var(--line);border-radius:6px;padding:10px;margin:10px 0}
+.irow{display:grid;grid-template-columns:1fr 96px 80px auto;gap:6px;align-items:center;margin-bottom:6px}
+.irow input,.irow select{margin:0;padding:7px 8px}
+.btns{display:flex;gap:4px}
+@media (max-width:560px){.irow{grid-template-columns:1fr 1fr}.irow .btns{grid-column:1/-1}}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:600 13px Barlow,sans-serif;color:var(--muted)}
+.flex{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<header>
+  <div class="hbar"><span id="sync"></span><span id="mode" class="pill">Viewing only</span><button class="hbtn" id="btnRefresh" type="button">Refresh</button><button class="hbtn" id="btnAuth" type="button">Sign in</button></div>
+  <div id="pw" hidden><label>Email<input type="email" id="pwEmail" autocomplete="username"></label><label>Password<input type="password" id="pwIn" autocomplete="current-password"></label><button class="btn" id="pwGo" type="button">Sign in</button><div id="pwMsg" class="note" role="status"></div></div>
+  <div class="wrap">
+    <h1>Rig Checks</h1>
+    <p>Apparatus and compartment checks</p>
+    <nav role="tablist" id="tabs">
+      <button role="tab" data-t="status" aria-selected="true">Rig status</button>
+      <button role="tab" data-t="check" aria-selected="false">Log a check</button>
+      <button role="tab" data-t="history" aria-selected="false">History</button>
+      <button role="tab" data-t="setup" aria-selected="false" hidden>Setup</button>
+    </nav>
+  </div>
+</header>
+<main id="app"></main>
+
+<script>
+/* ===== Supabase settings ===== */
+const SUPABASE_URL = "https://khrplgwehaigptpkcxbg.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_kRyDgkUBY0Ib7iYfYs_2gQ_P3jx5u_E";
+
+(function(){
+  var sb=null,user=null,role='';
+  var rigs=[],lastBy={},checks=[];
+  var tab='status',loaded=false,loadErr='',errMsg='',okMsg='',lastSync=null;
+  var openIds={},histRig='',checkRig='',armed='',formDirty=false;
+  var RIGS=['R13-1','E13-1','E13-2','T13-2','E13-3','R13-3','E13-4','B13-1'];
+  var STD=['SCBA packs present and charged','RIT pack present and charged','Engine oil level','Battery and charging','Lights and sirens','Brakes','Tires and lug nuts','Antifreeze / coolant level','Pump operation'];
+
+  function $(id){return document.getElementById(id)}
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+  function uid(){return Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4)}
+  function fmtDT(iso){return new Date(iso).toLocaleString([],{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})}
+  function isAdmin(){return role==='admin'}
+  function canCheck(){return role==='admin'||role==='rigchecker'}
+  function setUser(u){user=u||null;role=(u&&u.app_metadata&&u.app_metadata.role)||''}
+  function R(id){return rigs.find(function(g){return g.id===id})}
+  function items(g){var n=0;(g.checklist||[]).forEach(function(s){n+=(s.items||[]).length});return n}
+  function csvQ(v){v=String(v==null?'':v);return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
+  function mk(label,type,exp){return {id:uid(),label:label,type:type||'ok',expected:type==='count'?(exp==null?null:exp):null}}
+
+  /* ---------- data ---------- */
+  function load(){
+    if(!sb)return Promise.resolve();
+    return sb.from('rigs').select('*').order('sort',{ascending:true}).order('name',{ascending:true}).then(function(r1){
+      if(r1.error)throw r1.error;
+      rigs=r1.data||[];
+      return sb.from('rig_checks').select('*').order('checked_at',{ascending:false}).limit(200);
+    }).then(function(r2){
+      if(r2.error)throw r2.error;
+      checks=r2.data||[];
+      return Promise.all(rigs.map(function(g){return sb.from('rig_checks').select('*').eq('rig_id',g.id).order('checked_at',{ascending:false}).limit(1)}));
+    }).then(function(ls){
+      lastBy={};
+      ls.forEach(function(r,i){if(r.error)throw r.error;if(r.data&&r.data[0])lastBy[rigs[i].id]=r.data[0]});
+      loadErr='';loaded=true;lastSync=new Date();
+    }).catch(function(e){loadErr=(e&&e.message)||'Network error'}).then(function(){
+      if(tab==='check'&&formDirty)updateBar();else render();
+    });
+  }
+  function fail(what,err){errMsg=what+': '+((err&&err.message)||err);formDirty=false;return load()}
+  function saveRig(g){
+    var row={id:g.id,name:g.name,sort:g.sort||0,interval_days:g.interval_days||7,checklist:g.checklist||[]};
+    render();
+    sb.from('rigs').upsert(row).then(function(r){if(r.error)fail('Could not save',r.error)});
+  }
+
+  /* ---------- sign in ---------- */
+  function signIn(){
+    var em=$('pwEmail').value.trim(),pw=$('pwIn').value,msg=$('pwMsg');
+    if(!sb)return;
+    if(!em||!pw){msg.textContent='Enter your email and password.';return}
+    msg.textContent='Checking...';
+    sb.auth.signInWithPassword({email:em,password:pw}).then(function(r){
+      if(r.error){msg.textContent=/invalid login/i.test(r.error.message)?'Incorrect email or password.':r.error.message;return}
+      setUser(r.data&&r.data.user);msg.textContent='';
+      try{localStorage.setItem('rigchecks.email',em)}catch(e){}
+      $('pwIn').value='';$('pw').hidden=true;render();
+    }).catch(function(){msg.textContent='Could not reach Supabase.'});
+  }
+  function signOut(){
+    if(sb)sb.auth.signOut();
+    setUser(null);formDirty=false;checkRig='';errMsg='';okMsg='';render();
+  }
+  function updateBar(){
+    var m=$('mode');
+    m.textContent=!user?'Viewing only':role==='admin'?'Admin':role==='rigchecker'?'Rig checker':'No access';
+    m.className='pill'+(canCheck()?' on':'');m.title=user?(user.email||''):'';
+    $('btnAuth').textContent=user?'Sign out':'Sign in';
+    $('sync').textContent=lastSync?'Synced '+lastSync.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}):'';
+    document.querySelector('[data-t="setup"]').hidden=!isAdmin();
+  }
+
+  /* ---------- views ---------- */
+  function rigState(g){
+    var c=lastBy[g.id],days=g.interval_days||7;
+    if(!c)return {k:'late',t:'No check recorded'};
+    if(c.oos)return {k:'bad',t:'Out of service'};
+    if(c.problems>0)return {k:'bad',t:c.problems+' problem'+(c.problems===1?'':'s')+' reported'};
+    if(Date.now()-new Date(c.checked_at).getTime()>days*864e5)return {k:'late',t:'Check overdue'};
+    return {k:'ok',t:'OK'};
+  }
+  function vStatus(){
+    var h='';
+    if(!rigs.length){
+      return '<div class="card"><h2>No rigs yet</h2><p class="empty">'+(isAdmin()?'Open the Setup tab to add your rigs and their checklists.':'The admin has not set up the rigs yet.')+'</p></div>';
+    }
+    var bad=rigs.filter(function(g){return rigState(g).k==='bad'}).length;
+    if(bad)h+='<div class="banner err">'+bad+' rig'+(bad===1?' needs':'s need')+' attention.</div>';
+    h+='<div class="grid">';
+    rigs.forEach(function(g){
+      var s=rigState(g),c=lastBy[g.id];
+      h+='<div class="rig '+s.k+'"><h3>'+esc(g.name)+'</h3><div class="st '+s.k+'">'+esc(s.t)+'</div>';
+      if(c){
+        h+='<div class="note">Last check '+esc(fmtDT(c.checked_at))+' by '+esc(c.checked_by)+'</div>';
+        (c.results||[]).filter(function(x){return x.status==='problem'}).slice(0,6).forEach(function(x){
+          h+='<div class="prob">&bull; '+esc(x.section)+': '+esc(x.label)+(x.note?' ('+esc(x.note)+')':'')+'</div>';
+        });
+      }
+      h+='<div class="note">Checked every '+(g.interval_days||7)+' days</div>';
+      if(canCheck()&&items(g))h+='<p style="margin:8px 0 0"><button class="btn" data-startcheck="'+g.id+'">Start check</button></p>';
+      h+='</div>';
+    });
+    return h+'</div>';
+  }
+
+  function vCheck(){
+    if(!user)return '<div class="card"><h2>Log a check</h2><p class="empty">Sign in with your rig check login (top right) to log a check.</p></div>';
+    if(!canCheck())return '<div class="card"><h2>Log a check</h2><p class="empty">This login does not have rig check access. Ask the admin to set it up.</p></div>';
+    if(!rigs.length)return '<div class="card"><h2>Log a check</h2><p class="empty">No rigs have been set up yet.</p></div>';
+    var h='<div class="card"><h2>Log a check</h2><label>Rig<select id="checkRig"><option value="">Choose a rig</option>'+rigs.map(function(g){return '<option value="'+g.id+'"'+(g.id===checkRig?' selected':'')+'>'+esc(g.name)+'</option>'}).join('')+'</select></label></div>';
+    var g=R(checkRig);
+    if(!g)return h;
+    if(!items(g))return h+'<div class="card"><p class="empty">'+esc(g.name)+' has no checklist yet.'+(isAdmin()?' Add one on the Setup tab.':' Ask the admin to add one.')+'</p></div>';
+    h+='<form id="fCheck" novalidate>';
+    (g.checklist||[]).forEach(function(sec,si){
+      if(!(sec.items||[]).length)return;
+      h+='<div class="card"><h2>'+esc(sec.name)+'</h2>';
+      sec.items.forEach(function(it,ii){
+        var k=si+'_'+ii;
+        h+='<div class="fitem" data-k="'+k+'"><div class="ilabel">'+esc(it.label)+'</div>';
+        if(it.type==='count'){
+          h+='<label style="margin:4px 0">Count'+(it.expected!=null?' (should be '+it.expected+')':'')+'<input type="number" min="0" step="1" name="c_'+k+'" inputmode="numeric" style="max-width:140px"></label>';
+        }else{
+          h+='<div class="seg"><label class="o"><input type="radio" name="r_'+k+'" value="ok"><span>OK</span></label><label class="p"><input type="radio" name="r_'+k+'" value="problem"><span>Problem</span></label></div>';
+        }
+        h+='<input type="text" name="n_'+k+'" placeholder="Note (required for a problem)" maxlength="300"></div>';
+      });
+      h+='</div>';
+    });
+    h+='<div class="card"><label>Overall note (optional)<input type="text" name="note" maxlength="500"></label><label class="chk"><input type="checkbox" name="oos">Mark this rig out of service</label><div class="ferr"></div><button class="btn" type="submit">Submit check</button></div></form>';
+    return h;
+  }
+  function submitCheck(f){
+    var g=R(checkRig);if(!g||!user)return;
+    var results=[],problems=0,miss=[];
+    [].forEach.call(f.querySelectorAll('.fitem'),function(el){el.classList.remove('miss')});
+    (g.checklist||[]).forEach(function(sec,si){
+      (sec.items||[]).forEach(function(it,ii){
+        var k=si+'_'+ii,el=f.querySelector('.fitem[data-k="'+k+'"]'),note=(f.elements['n_'+k].value||'').trim(),status,count=null;
+        if(it.type==='count'){
+          var v=f.elements['c_'+k].value;
+          if(v===''){miss.push(el);return}
+          count=Number(v);status=(it.expected!=null&&count<it.expected)?'problem':'ok';
+        }else{
+          var sel=f.querySelector('input[name="r_'+k+'"]:checked');
+          if(!sel){miss.push(el);return}
+          status=sel.value;
+        }
+        if(status==='problem'&&!note){miss.push(el);return}
+        if(status==='problem')problems++;
+        results.push({section:sec.name,item_id:it.id,label:it.label,type:it.type,expected:it.expected==null?null:it.expected,status:status,count:count,note:note});
+      });
+    });
+    var fe=f.querySelector('.ferr');
+    if(miss.length){
+      miss.forEach(function(el){if(el)el.classList.add('miss')});
+      fe.innerHTML='<div class="banner err">'+miss.length+' item'+(miss.length===1?' is':'s are')+' not finished. Answer every item, and add a note to each problem.</div>';
+      if(miss[0])miss[0].scrollIntoView({block:'center'});
+      return;
+    }
+    fe.innerHTML='';
+    var rec={id:uid(),rig_id:g.id,rig_name:g.name,checked_by:user.email,problems:problems,oos:f.elements.oos.checked,note:(f.elements.note.value||'').trim(),results:results};
+    var btn=f.querySelector('button[type=submit]');btn.disabled=true;btn.textContent='Saving...';
+    sb.from('rig_checks').insert(rec).then(function(r){
+      if(r.error){btn.disabled=false;btn.textContent='Submit check';fe.innerHTML='<div class="banner err">Could not save: '+esc(r.error.message)+'</div>';return}
+      okMsg='Check saved for '+g.name+(problems?' with '+problems+' problem'+(problems===1?'':'s')+'.':'. All items OK.');
+      formDirty=false;checkRig='';tab='status';load();
+    });
+  }
+
+  function vHistory(){
+    var h='<div class="card"><h2>Check history</h2><div class="flex"><label style="margin:0;min-width:180px">Rig<select id="histRig"><option value="">All rigs</option>'+rigs.map(function(g){return '<option value="'+g.id+'"'+(g.id===histRig?' selected':'')+'>'+esc(g.name)+'</option>'}).join('')+'</select></label><button class="btn ghost" id="csv" style="margin-top:18px">Download CSV</button></div>';
+    var list=checks.filter(function(c){return !histRig||c.rig_id===histRig});
+    if(!list.length)return h+'<p class="empty">No checks recorded yet.</p></div>';
+    list.forEach(function(c){
+      var p=c.problems>0;
+      h+='<details data-id="'+c.id+'"'+(openIds[c.id]?' open':'')+'><summary><div><b>'+esc(c.rig_name)+'</b><br><span>'+esc(fmtDT(c.checked_at))+' · '+esc(c.checked_by)+'</span></div><div class="st '+(c.oos||p?'bad':'ok')+'">'+(c.oos?'Out of service':p?c.problems+' problem'+(c.problems===1?'':'s'):'All OK')+'</div></summary>';
+      if(c.note)h+='<p class="note">Note: '+esc(c.note)+'</p>';
+      var by={},order=[];
+      (c.results||[]).forEach(function(x){if(!by[x.section]){by[x.section]=[];order.push(x.section)}by[x.section].push(x)});
+      h+='<div class="scroll"><table><tbody>';
+      order.forEach(function(s){
+        h+='<tr><th colspan="3">'+esc(s)+'</th></tr>';
+        by[s].forEach(function(x){
+          h+='<tr><td>'+esc(x.label)+'</td><td class="st '+(x.status==='problem'?'bad':'ok')+'">'+(x.type==='count'?esc(x.count)+(x.expected!=null?' of '+esc(x.expected):''):(x.status==='problem'?'Problem':'OK'))+(x.type==='count'&&x.status==='problem'?' (short)':'')+'</td><td class="note">'+esc(x.note||'')+'</td></tr>';
+        });
+      });
+      h+='</tbody></table></div>';
+      if(isAdmin())h+='<button class="x" data-delcheck="'+c.id+'">Delete this check</button>';
+      h+='</details>';
+    });
+    return h+'<p class="note">Showing the latest 200 checks.</p></div>';
+  }
+  function exportCsv(){
+    var lines=[['Date','Rig','Checked by','Section','Item','Result','Count','Expected','Item note','Out of service','Overall note'].map(csvQ).join(',')];
+    checks.filter(function(c){return !histRig||c.rig_id===histRig}).forEach(function(c){
+      (c.results||[]).forEach(function(x){
+        lines.push([fmtDT(c.checked_at),c.rig_name,c.checked_by,x.section,x.label,x.status==='problem'?'Problem':'OK',x.count==null?'':x.count,x.expected==null?'':x.expected,x.note||'',c.oos?'Yes':'No',c.note||''].map(csvQ).join(','));
+      });
+    });
+    var blob=new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
+    var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='rig-checks-'+new Date().toISOString().slice(0,10)+'.csv';
+    document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},500);
+  }
+
+  function vSetup(){
+    var h='';
+    if(!rigs.length){
+      h+='<div class="card"><h2>Add your rigs</h2><p class="note" style="margin-top:0">Adds '+RIGS.join(', ')+', each with a starter "Vehicle checks" section (SCBA packs, RIT pack, oil, battery, lights, brakes, tires, antifreeze and pump). You can change or delete any of it.</p><button class="btn" id="seed">Add my 8 rigs</button></div>';
+    }
+    h+='<div class="card"><h2>Add a rig</h2><div class="flex"><label style="margin:0;flex:1;min-width:160px">Name<input id="newRig" maxlength="30" placeholder="e.g. E13-5"></label><button class="btn" id="addRig" style="margin-top:18px">Add rig</button></div></div>';
+    if(rigs.length){
+      h+='<div class="card"><h2>Rigs and checklists</h2><p class="note" style="margin-top:0">Open a rig to edit its compartments. Changes save as soon as you leave a box.</p>';
+      rigs.forEach(function(g){h+=setupRig(g)});
+      h+='</div>';
+    }
+    return h;
+  }
+  function setupRig(g){
+    var s='<details data-id="'+g.id+'"'+(openIds[g.id]?' open':'')+'><summary><div><b>'+esc(g.name)+'</b></div><span>'+(g.checklist||[]).length+' sections · '+items(g)+' items</span></summary><div data-rig="'+g.id+'">';
+    s+='<div class="row"><label>Name<input data-f="rname" value="'+esc(g.name)+'" maxlength="30"></label><label>Check every (days)<input data-f="rint" type="number" min="1" max="365" value="'+(g.interval_days||7)+'"></label></div>';
+    (g.checklist||[]).forEach(function(sec,si){
+      s+='<div class="sec" data-s="'+si+'"><div class="flex"><input data-f="sname" value="'+esc(sec.name)+'" maxlength="60" style="flex:1;margin:0;font-weight:700" aria-label="Section name"><button class="sm" data-act="secup">&uarr;</button><button class="sm" data-act="secdown">&darr;</button><button class="x" data-act="delsec">Delete section</button></div><div style="margin-top:8px">';
+      (sec.items||[]).forEach(function(it,ii){
+        s+='<div class="irow" data-i="'+ii+'"><input data-f="ilabel" value="'+esc(it.label)+'" maxlength="120" aria-label="Item"><select data-f="itype" aria-label="Type"><option value="ok"'+(it.type!=='count'?' selected':'')+'>OK / Problem</option><option value="count"'+(it.type==='count'?' selected':'')+'>Count</option></select>'+
+          (it.type==='count'?'<input data-f="iexp" type="number" min="0" value="'+(it.expected==null?'':it.expected)+'" placeholder="Expected" aria-label="Expected count">':'<span></span>')+
+          '<div class="btns"><button class="sm" data-act="iup">&uarr;</button><button class="sm" data-act="idown">&darr;</button><button class="x" data-act="delitem">Remove</button></div></div>';
+      });
+      s+='</div><label style="margin-top:8px">Add items (one per line)<textarea data-add placeholder="Halligan&#10;Flathead axe&#10;Pike pole"></textarea></label><button class="btn ghost" data-act="additems">Add these items</button></div>';
+    });
+    s+='<div class="flex" style="margin:10px 0"><input data-newsec placeholder="New section, e.g. Driver side compartment 1" maxlength="60" style="flex:1;margin:0"><button class="btn" data-act="addsec">Add section</button></div>';
+    var others=rigs.filter(function(o){return o.id!==g.id&&(o.checklist||[]).length});
+    if(others.length)s+='<div class="flex" style="margin:10px 0"><select data-copyfrom style="flex:1;margin:0"><option value="">Copy sections from another rig...</option>'+others.map(function(o){return '<option value="'+o.id+'">'+esc(o.name)+'</option>'}).join('')+'</select><button class="btn ghost" data-act="copy">Copy</button></div>';
+    s+='<button class="x" data-act="delrig">Delete rig</button></div></details>';
+    return s;
+  }
+
+  function render(){
+    var a=$('app');
+    if(!isAdmin()&&tab==='setup')tab='status';
+    var h='';
+    if(loadErr)h+='<div class="banner err">Could not load from Supabase: '+esc(loadErr)+'. If the tables are missing, run the SQL setup first.</div>';
+    else if(!loaded)h+='<div class="banner">Loading the latest data...</div>';
+    if(errMsg)h+='<div class="banner err">'+esc(errMsg)+' <button class="x" id="dismiss">Dismiss</button></div>';
+    if(okMsg)h+='<div class="banner">'+esc(okMsg)+' <button class="x" id="dismiss">Dismiss</button></div>';
+    if(user&&!canCheck())h+='<div class="banner">You are signed in as '+esc(user.email)+', but this login has no rig check access.</div>';
+    h+=tab==='status'?vStatus():tab==='check'?vCheck():tab==='history'?vHistory():vSetup();
+    a.innerHTML=h;
+    [].forEach.call(document.querySelectorAll('#tabs button'),function(b){b.setAttribute('aria-selected',b.dataset.t===tab)});
+    updateBar();
+  }
+
+  /* ---------- events ---------- */
+  function arm(t,key,label,fn){
+    if(armed===key){armed='';fn();return}
+    armed=key;var old=t.textContent;t.textContent='Tap again to confirm';
+    setTimeout(function(){if(armed===key){armed='';if(t.isConnected)t.textContent=old}},4000);
+  }
+  $('tabs').addEventListener('click',function(e){var t=e.target.closest('button');if(t&&!t.hidden){tab=t.dataset.t;okMsg='';render()}});
+  $('btnRefresh').addEventListener('click',function(){load()});
+  $('btnAuth').addEventListener('click',function(){
+    if(user){signOut();return}
+    var p=$('pw');p.hidden=!p.hidden;
+    if(!p.hidden){var em=$('pwEmail');if(!em.value){try{em.value=localStorage.getItem('rigchecks.email')||''}catch(e){}}(em.value?$('pwIn'):em).focus()}
+  });
+  $('pwGo').addEventListener('click',signIn);
+  ['pwEmail','pwIn'].forEach(function(id){$(id).addEventListener('keydown',function(e){if(e.key==='Enter')signIn()})});
+  var app=$('app');
+  app.addEventListener('toggle',function(e){if(e.target.tagName==='DETAILS'&&e.target.dataset.id)openIds[e.target.dataset.id]=e.target.open},true);
+  app.addEventListener('input',function(e){if(e.target.closest&&e.target.closest('#fCheck'))formDirty=true});
+  app.addEventListener('submit',function(e){e.preventDefault();if(e.target.id==='fCheck')submitCheck(e.target)});
+  app.addEventListener('change',function(e){
+    var t=e.target;
+    if(t.id==='checkRig'){checkRig=t.value;formDirty=false;render();return}
+    if(t.id==='histRig'){histRig=t.value;render();return}
+    var box=t.closest&&t.closest('[data-rig]');
+    if(!box||!t.dataset.f||!isAdmin())return;
+    var g=R(box.dataset.rig);if(!g)return;
+    var secEl=t.closest('[data-s]'),sec=secEl?g.checklist[+secEl.dataset.s]:null;
+    var itEl=t.closest('[data-i]'),it=(sec&&itEl)?sec.items[+itEl.dataset.i]:null;
+    var f=t.dataset.f,v=t.value;
+    if(f==='rname'){g.name=v.trim()||g.name}
+    else if(f==='rint'){g.interval_days=Math.max(1,Math.min(365,parseInt(v,10)||7))}
+    else if(f==='sname'&&sec){sec.name=v.trim()||sec.name}
+    else if(f==='ilabel'&&it){it.label=v.trim()||it.label}
+    else if(f==='itype'&&it){it.type=v==='count'?'count':'ok';if(it.type==='ok')it.expected=null}
+    else if(f==='iexp'&&it){it.expected=v===''?null:Math.max(0,parseInt(v,10)||0)}
+    saveRig(g);
+  });
+  app.addEventListener('click',function(e){
+    var t=e.target;
+    if(t.id==='dismiss'){errMsg='';okMsg='';render();return}
+    if(t.dataset.startcheck){checkRig=t.dataset.startcheck;formDirty=false;tab='check';okMsg='';render();window.scrollTo(0,0);return}
+    if(t.id==='csv'){exportCsv();return}
+    if(t.dataset.delcheck){var id=t.dataset.delcheck;arm(t,'c'+id,'',function(){
+      checks=checks.filter(function(c){return c.id!==id});render();
+      sb.from('rig_checks').delete().eq('id',id).select().then(function(r){if(r.error)fail('Could not delete',r.error);else if(!r.data||!r.data.length)fail('Nothing was deleted','you may need to sign in as admin again');else load()});
+    });return}
+    if(!isAdmin())return;
+    if(t.id==='seed'){
+      var rows=RIGS.map(function(n,i){return {id:uid(),name:n,sort:i,interval_days:7,checklist:[{id:uid(),name:'Vehicle checks',items:STD.map(function(l){return mk(l,'ok')})}]}});
+      sb.from('rigs').upsert(rows).then(function(r){if(r.error)fail('Could not add rigs',r.error);else{okMsg='Rigs added.';load()}});return;
+    }
+    if(t.id==='addRig'){
+      var nm=$('newRig').value.trim();if(!nm)return;
+      var g0={id:uid(),name:nm,sort:rigs.length,interval_days:7,checklist:[]};
+      rigs.push(g0);openIds[g0.id]=true;saveRig(g0);return;
+    }
+    var act=t.dataset.act;if(!act)return;
+    var box=t.closest('[data-rig]');if(!box)return;
+    var g=R(box.dataset.rig);if(!g)return;
+    g.checklist=g.checklist||[];
+    var secEl=t.closest('[data-s]'),si=secEl?+secEl.dataset.s:-1,sec=si>-1?g.checklist[si]:null;
+    var itEl=t.closest('[data-i]'),ii=itEl?+itEl.dataset.i:-1;
+    function swap(arr,i,j){if(j<0||j>=arr.length)return;var x=arr[i];arr[i]=arr[j];arr[j]=x}
+    if(act==='secup'){swap(g.checklist,si,si-1);saveRig(g)}
+    else if(act==='secdown'){swap(g.checklist,si,si+1);saveRig(g)}
+    else if(act==='iup'&&sec){swap(sec.items,ii,ii-1);saveRig(g)}
+    else if(act==='idown'&&sec){swap(sec.items,ii,ii+1);saveRig(g)}
+    else if(act==='delitem'&&sec){sec.items.splice(ii,1);saveRig(g)}
+    else if(act==='delsec'&&sec){arm(t,'s'+g.id+si,'',function(){g.checklist.splice(si,1);saveRig(g)})}
+    else if(act==='additems'&&sec){
+      var ta=secEl.querySelector('textarea[data-add]'),lines=ta.value.split('\n').map(function(x){return x.trim()}).filter(Boolean);
+      if(!lines.length)return;
+      sec.items=(sec.items||[]).concat(lines.map(function(l){return mk(l,'ok')}));saveRig(g);
+    }
+    else if(act==='addsec'){
+      var inp=box.querySelector('[data-newsec]'),nm2=inp.value.trim();if(!nm2)return;
+      g.checklist.push({id:uid(),name:nm2,items:[]});saveRig(g);
+    }
+    else if(act==='copy'){
+      var sel=box.querySelector('[data-copyfrom]'),src=R(sel.value);if(!src)return;
+      (src.checklist||[]).forEach(function(s2){g.checklist.push({id:uid(),name:s2.name,items:(s2.items||[]).map(function(i2){return mk(i2.label,i2.type,i2.expected)})})});
+      saveRig(g);
+    }
+    else if(act==='delrig'){arm(t,'r'+g.id,'',function(){
+      rigs=rigs.filter(function(x){return x.id!==g.id});render();
+      sb.from('rigs').delete().eq('id',g.id).select().then(function(r){if(r.error)fail('Could not delete',r.error);else if(!r.data||!r.data.length)fail('Nothing was deleted','you may need to sign in as admin again');else load()});
+    })}
+  });
+  document.addEventListener('visibilitychange',function(){if(!document.hidden&&sb&&!formDirty)load()});
+
+  /* ---------- start ---------- */
+  render();
+  try{
+    sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY,{auth:{persistSession:true,autoRefreshToken:true}});
+    sb.auth.getSession().then(function(s){if(s&&s.data&&s.data.session){setUser(s.data.session.user);render()}}).catch(function(){});
+    load();
+  }catch(e){loadErr='the Supabase library did not load';render()}
+})();
+</script>
+</body>
+</html>
