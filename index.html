@@ -201,6 +201,7 @@ const SUPABASE_ANON_KEY = "sb_publishable_kRyDgkUBY0Ib7iYfYs_2gQ_P3jx5u_E";
     if(Date.now()-new Date(c.checked_at).getTime()>days*864e5)return {k:'late',t:'Check overdue'};
     return {k:'ok',t:'OK'};
   }
+  function fmtNum(n){return Number(n).toLocaleString(undefined,{maximumFractionDigits:1})}
   function vStatus(){
     var h='';
     if(!rigs.length){
@@ -214,6 +215,7 @@ const SUPABASE_ANON_KEY = "sb_publishable_kRyDgkUBY0Ib7iYfYs_2gQ_P3jx5u_E";
       h+='<div class="rig '+s.k+'"><h3>'+esc(g.name)+'</h3><div class="st '+s.k+'">'+esc(s.t)+'</div>';
       if(c){
         h+='<div class="note">Last check '+esc(fmtDT(c.checked_at))+' by '+esc(c.checked_by)+'</div>';
+        if(c.mileage!=null||c.engine_hours!=null)h+='<div class="note">'+(c.mileage!=null?'<b>'+fmtNum(c.mileage)+'</b> mi':'')+(c.mileage!=null&&c.engine_hours!=null?' &middot; ':'')+(c.engine_hours!=null?'<b>'+fmtNum(c.engine_hours)+'</b> engine hrs':'')+'</div>';
         (c.results||[]).filter(function(x){return x.status==='problem'}).slice(0,6).forEach(function(x){
           h+='<div class="prob">&bull; '+esc(x.section)+': '+esc(x.label)+(x.note?' ('+esc(x.note)+')':'')+'</div>';
         });
@@ -234,6 +236,8 @@ const SUPABASE_ANON_KEY = "sb_publishable_kRyDgkUBY0Ib7iYfYs_2gQ_P3jx5u_E";
     if(!g)return h;
     if(!items(g))return h+'<div class="card"><p class="empty">'+esc(g.name)+' has no checklist yet.'+(isAdmin()?' Add one on the Setup tab.':' Ask the admin to add one.')+'</p></div>';
     h+='<form id="fCheck" novalidate>';
+    var lc=lastBy[g.id];
+    h+='<div class="card"><h2>Readings</h2><label>Current mileage (odometer)<input type="number" name="mileage" min="0" step="1" inputmode="numeric" placeholder="e.g. 48215"></label><label>Engine hours (leave blank if this rig has no hour meter)<input type="number" name="hours" min="0" step="0.1" inputmode="decimal" placeholder="e.g. 3120.5"></label>'+(lc&&(lc.mileage!=null||lc.engine_hours!=null)?'<p class="note" style="margin:6px 0 0">Last recorded '+esc(fmtDT(lc.checked_at))+': '+(lc.mileage!=null?fmtNum(lc.mileage)+' mi':'no mileage')+', '+(lc.engine_hours!=null?fmtNum(lc.engine_hours)+' hrs':'no hours')+'</p>':'')+'</div>';
     (g.checklist||[]).forEach(function(sec,si){
       if(!(sec.items||[]).length)return;
       h+='<div class="card"><h2>'+esc(sec.name)+'</h2>';
@@ -274,6 +278,31 @@ const SUPABASE_ANON_KEY = "sb_publishable_kRyDgkUBY0Ib7iYfYs_2gQ_P3jx5u_E";
       });
     });
     var fe=f.querySelector('.ferr');
+    var mv=f.elements.mileage.value.trim(),hv=f.elements.hours.value.trim(),rerr=[];
+    var mileage=mv===''?null:Number(mv),hours=hv===''?null:Number(hv);
+    if(mileage==null||!isFinite(mileage)||mileage<0)rerr.push('Enter the current mileage from the odometer.');
+    if(hours!=null&&(!isFinite(hours)||hours<0))rerr.push('Engine hours must be a number, or leave it blank.');
+    if(rerr.length){
+      fe.innerHTML='<div class="banner err">'+rerr.join(' ')+'</div>';
+      f.elements.mileage.scrollIntoView({block:'center'});
+      return;
+    }
+    var lp=lastBy[g.id],warn=[];
+    if(lp&&lp.mileage!=null){
+      if(mileage<Number(lp.mileage))warn.push('Mileage ('+fmtNum(mileage)+') is lower than the last reading ('+fmtNum(lp.mileage)+').');
+      else if(mileage-Number(lp.mileage)>1500)warn.push('Mileage is up '+fmtNum(mileage-Number(lp.mileage))+' since the last reading.');
+    }
+    if(hours!=null&&lp&&lp.engine_hours!=null){
+      if(hours<Number(lp.engine_hours))warn.push('Engine hours ('+fmtNum(hours)+') are lower than the last reading ('+fmtNum(lp.engine_hours)+').');
+      else if(hours-Number(lp.engine_hours)>150)warn.push('Engine hours are up '+fmtNum(hours-Number(lp.engine_hours))+' since the last reading.');
+    }
+    var wkey=mileage+'|'+(hours==null?'':hours);
+    if(warn.length&&f.dataset.warned!==wkey){
+      f.dataset.warned=wkey;
+      fe.innerHTML='<div class="banner err">'+warn.map(esc).join(' ')+' Check the numbers, then tap Submit check again to save anyway.</div>';
+      f.elements.mileage.scrollIntoView({block:'center'});
+      return;
+    }
     if(miss.length){
       miss.forEach(function(el){if(el)el.classList.add('miss')});
       fe.innerHTML='<div class="banner err">'+miss.length+' item'+(miss.length===1?' is':'s are')+' not finished. Answer every item, and add a note to each problem.</div>';
@@ -281,10 +310,10 @@ const SUPABASE_ANON_KEY = "sb_publishable_kRyDgkUBY0Ib7iYfYs_2gQ_P3jx5u_E";
       return;
     }
     fe.innerHTML='';
-    var rec={id:uid(),rig_id:g.id,rig_name:g.name,checked_by:user.email,problems:problems,oos:f.elements.oos.checked,note:(f.elements.note.value||'').trim(),results:results};
+    var rec={id:uid(),rig_id:g.id,rig_name:g.name,checked_by:user.email,problems:problems,oos:f.elements.oos.checked,note:(f.elements.note.value||'').trim(),results:results,mileage:mileage,engine_hours:hours};
     var btn=f.querySelector('button[type=submit]');btn.disabled=true;btn.textContent='Saving...';
     sb.from('rig_checks').insert(rec).then(function(r){
-      if(r.error){btn.disabled=false;btn.textContent='Submit check';fe.innerHTML='<div class="banner err">Could not save: '+esc(r.error.message)+'</div>';return}
+      if(r.error){btn.disabled=false;btn.textContent='Submit check';fe.innerHTML='<div class="banner err">Could not save: '+esc(r.error.message)+(/mileage|engine_hours/.test(r.error.message)?' (the admin needs to run the mileage/engine hours SQL line in Supabase first)':'')+'</div>';return}
       okMsg='Check saved for '+g.name+(problems?' with '+problems+' problem'+(problems===1?'':'s')+'.':'. All items OK.');
       formDirty=false;checkRig='';tab='status';load();
     });
@@ -297,6 +326,7 @@ const SUPABASE_ANON_KEY = "sb_publishable_kRyDgkUBY0Ib7iYfYs_2gQ_P3jx5u_E";
     list.forEach(function(c){
       var p=c.problems>0;
       h+='<details data-id="'+c.id+'"'+(openIds[c.id]?' open':'')+'><summary><div><b>'+esc(c.rig_name)+'</b><br><span>'+esc(fmtDT(c.checked_at))+' · '+esc(c.checked_by)+'</span></div><div class="st '+(c.oos||p?'bad':'ok')+'">'+(c.oos?'Out of service':p?c.problems+' problem'+(c.problems===1?'':'s'):'All OK')+'</div></summary>';
+      if(c.mileage!=null||c.engine_hours!=null)h+='<p class="note">'+(c.mileage!=null?'Mileage: <b>'+fmtNum(c.mileage)+'</b>':'')+(c.mileage!=null&&c.engine_hours!=null?' &middot; ':'')+(c.engine_hours!=null?'Engine hours: <b>'+fmtNum(c.engine_hours)+'</b>':'')+'</p>';
       if(c.note)h+='<p class="note">Note: '+esc(c.note)+'</p>';
       var by={},order=[];
       (c.results||[]).forEach(function(x){if(!by[x.section]){by[x.section]=[];order.push(x.section)}by[x.section].push(x)});
@@ -314,10 +344,10 @@ const SUPABASE_ANON_KEY = "sb_publishable_kRyDgkUBY0Ib7iYfYs_2gQ_P3jx5u_E";
     return h+'<p class="note">Showing the latest 200 checks.</p></div>';
   }
   function exportCsv(){
-    var lines=[['Date','Rig','Checked by','Section','Item','Result','Count','Expected','Item note','Out of service','Overall note'].map(csvQ).join(',')];
+    var lines=[['Date','Rig','Checked by','Section','Item','Result','Count','Expected','Item note','Out of service','Overall note','Mileage','Engine hours'].map(csvQ).join(',')];
     checks.filter(function(c){return !histRig||c.rig_id===histRig}).forEach(function(c){
       (c.results||[]).forEach(function(x){
-        lines.push([fmtDT(c.checked_at),c.rig_name,c.checked_by,x.section,x.label,x.status==='problem'?'Problem':'OK',x.count==null?'':x.count,x.expected==null?'':x.expected,x.note||'',c.oos?'Yes':'No',c.note||''].map(csvQ).join(','));
+        lines.push([fmtDT(c.checked_at),c.rig_name,c.checked_by,x.section,x.label,x.status==='problem'?'Problem':'OK',x.count==null?'':x.count,x.expected==null?'':x.expected,x.note||'',c.oos?'Yes':'No',c.note||'',c.mileage==null?'':c.mileage,c.engine_hours==null?'':c.engine_hours].map(csvQ).join(','));
       });
     });
     var blob=new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
