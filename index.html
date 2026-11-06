@@ -85,8 +85,9 @@ summary span{color:var(--muted);font-size:14px}
 .fitem.miss{background:rgba(179,38,30,.10);margin:0 -8px;padding:10px 8px}
 .chk{display:inline-flex;gap:8px;align-items:center;margin:0 14px 10px 0;font-weight:500}
 .chk input{width:20px;height:20px;margin:0;accent-color:var(--ink)}
+.tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;background:var(--khaki);color:#16202a;border-radius:3px;padding:1px 6px;margin-left:6px;vertical-align:middle}
 .sec{border:1px solid var(--line);border-radius:6px;padding:10px;margin:10px 0}
-.irow{display:grid;grid-template-columns:1fr 96px 80px auto;gap:6px;align-items:center;margin-bottom:6px}
+.irow{display:grid;grid-template-columns:1fr 96px 96px 80px auto;gap:6px;align-items:center;margin-bottom:6px}
 .irow input,.irow select{margin:0;padding:7px 8px}
 .btns{display:flex;gap:4px}
 @media (max-width:560px){.irow{grid-template-columns:1fr 1fr}.irow .btns{grid-column:1/-1}}
@@ -122,7 +123,7 @@ const SUPABASE_ANON_KEY = "sb_publishable_kRyDgkUBY0Ib7iYfYs_2gQ_P3jx5u_E";
 
 (function(){
   var sb=null,user=null,role='';
-  var rigs=[],lastBy={},checks=[];
+  var rigs=[],lastBy={},checks=[],doneMonth={},showMonthly=false;
   var tab='status',loaded=false,loadErr='',errMsg='',okMsg='',lastSync=null;
   var openIds={},histRig='',checkRig='',armed='',formDirty=false;
   var RIGS=['R13-1','E13-1','E13-2','T13-2','E13-3','R13-3','E13-4','B13-1'];
@@ -138,7 +139,11 @@ const SUPABASE_ANON_KEY = "sb_publishable_kRyDgkUBY0Ib7iYfYs_2gQ_P3jx5u_E";
   function R(id){return rigs.find(function(g){return g.id===id})}
   function items(g){var n=0;(g.checklist||[]).forEach(function(s){n+=(s.items||[]).length});return n}
   function csvQ(v){v=String(v==null?'':v);return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
-  function mk(label,type,exp){return {id:uid(),label:label,type:type||'ok',expected:type==='count'?(exp==null?null:exp):null}}
+  function mk(label,type,exp,freq){return {id:uid(),label:label,type:type||'ok',expected:type==='count'?(exp==null?null:exp):null,freq:freq==='monthly'?'monthly':'weekly'}}
+  function isMonthly(it){return it&&it.freq==='monthly'}
+  function doneThisMonth(g,it){return !!(doneMonth[g.id]&&doneMonth[g.id][it.id])}
+  function isShown(g,it){return !isMonthly(it)||showMonthly||!doneThisMonth(g,it)}
+  function monthlyStats(g){var t=0,due=0;(g.checklist||[]).forEach(function(s){(s.items||[]).forEach(function(it){if(isMonthly(it)){t++;if(!doneThisMonth(g,it))due++}})});return {total:t,due:due}}
 
   /* ---------- data ---------- */
   function load(){
@@ -154,6 +159,11 @@ const SUPABASE_ANON_KEY = "sb_publishable_kRyDgkUBY0Ib7iYfYs_2gQ_P3jx5u_E";
     }).then(function(ls){
       lastBy={};
       ls.forEach(function(r,i){if(r.error)throw r.error;if(r.data&&r.data[0])lastBy[rigs[i].id]=r.data[0]});
+      var now=new Date(),ms=new Date(now.getFullYear(),now.getMonth(),1).toISOString();
+      return Promise.all(rigs.map(function(g){return sb.from('rig_checks').select('rig_id,checked_at,results').eq('rig_id',g.id).gte('checked_at',ms)}));
+    }).then(function(ms){
+      doneMonth={};
+      ms.forEach(function(r,i){if(r.error)throw r.error;var m={};(r.data||[]).forEach(function(c){(c.results||[]).forEach(function(x){if(x.freq==='monthly'&&x.item_id&&!m[x.item_id])m[x.item_id]=c.checked_at})});doneMonth[rigs[i].id]=m});
       loadErr='';loaded=true;lastSync=new Date();
     }).catch(function(e){loadErr=(e&&e.message)||'Network error'}).then(function(){
       if(tab==='check'&&formDirty)updateBar();else render();
@@ -220,7 +230,9 @@ const SUPABASE_ANON_KEY = "sb_publishable_kRyDgkUBY0Ib7iYfYs_2gQ_P3jx5u_E";
           h+='<div class="prob">&bull; '+esc(x.section)+': '+esc(x.label)+(x.note?' ('+esc(x.note)+')':'')+'</div>';
         });
       }
-      h+='<div class="note">Checked every '+(g.interval_days||7)+' days</div>';
+      var mst=monthlyStats(g);
+      if(mst.total)h+='<div class="note">'+(mst.due?'<span class="st late">Monthly items due: '+mst.due+' of '+mst.total+'</span>':'Monthly items: all done this month')+'</div>';
+      h+='<div class="note">Weekly check every '+(g.interval_days||7)+' days</div>';
       if(canCheck()&&items(g))h+='<p style="margin:8px 0 0"><button class="btn" data-startcheck="'+g.id+'">Start check</button></p>';
       h+='</div>';
     });
@@ -235,15 +247,18 @@ const SUPABASE_ANON_KEY = "sb_publishable_kRyDgkUBY0Ib7iYfYs_2gQ_P3jx5u_E";
     var g=R(checkRig);
     if(!g)return h;
     if(!items(g))return h+'<div class="card"><p class="empty">'+esc(g.name)+' has no checklist yet.'+(isAdmin()?' Add one on the Setup tab.':' Ask the admin to add one.')+'</p></div>';
+    var mq=monthlyStats(g);
+    if(mq.total)h+='<div class="card"><p class="note" style="margin:0">'+(mq.due?'<b>'+mq.due+' monthly item'+(mq.due===1?'':'s')+' due this month</b> are included below.':'All monthly items are done for this month.')+'</p><label class="chk" style="margin-top:8px"><input type="checkbox" id="showMonthly"'+(showMonthly?' checked':'')+'>Also show monthly items already done this month</label></div>';
     h+='<form id="fCheck" novalidate>';
     var lc=lastBy[g.id];
     h+='<div class="card"><h2>Readings</h2><label>Current mileage (odometer)<input type="number" name="mileage" min="0" step="1" inputmode="numeric" placeholder="e.g. 48215"></label><label>Engine hours (leave blank if this rig has no hour meter)<input type="number" name="hours" min="0" step="0.1" inputmode="decimal" placeholder="e.g. 3120.5"></label>'+(lc&&(lc.mileage!=null||lc.engine_hours!=null)?'<p class="note" style="margin:6px 0 0">Last recorded '+esc(fmtDT(lc.checked_at))+': '+(lc.mileage!=null?fmtNum(lc.mileage)+' mi':'no mileage')+', '+(lc.engine_hours!=null?fmtNum(lc.engine_hours)+' hrs':'no hours')+'</p>':'')+'</div>';
     (g.checklist||[]).forEach(function(sec,si){
-      if(!(sec.items||[]).length)return;
+      if(!(sec.items||[]).some(function(it){return isShown(g,it)}))return;
       h+='<div class="card"><h2>'+esc(sec.name)+'</h2>';
       sec.items.forEach(function(it,ii){
+        if(!isShown(g,it))return;
         var k=si+'_'+ii;
-        h+='<div class="fitem" data-k="'+k+'"><div class="ilabel">'+esc(it.label)+'</div>';
+        h+='<div class="fitem" data-k="'+k+'"><div class="ilabel">'+esc(it.label)+(isMonthly(it)?'<span class="tag">Monthly</span>':'')+'</div>';
         if(it.type==='count'){
           h+='<label style="margin:4px 0">Count'+(it.expected!=null?' (should be '+it.expected+')':'')+'<input type="number" min="0" step="1" name="c_'+k+'" inputmode="numeric" style="max-width:140px"></label>';
         }else{
@@ -262,6 +277,7 @@ const SUPABASE_ANON_KEY = "sb_publishable_kRyDgkUBY0Ib7iYfYs_2gQ_P3jx5u_E";
     [].forEach.call(f.querySelectorAll('.fitem'),function(el){el.classList.remove('miss')});
     (g.checklist||[]).forEach(function(sec,si){
       (sec.items||[]).forEach(function(it,ii){
+        if(!isShown(g,it))return;
         var k=si+'_'+ii,el=f.querySelector('.fitem[data-k="'+k+'"]'),note=(f.elements['n_'+k].value||'').trim(),status,count=null;
         if(it.type==='count'){
           var v=f.elements['c_'+k].value;
@@ -274,7 +290,7 @@ const SUPABASE_ANON_KEY = "sb_publishable_kRyDgkUBY0Ib7iYfYs_2gQ_P3jx5u_E";
         }
         if(status==='problem'&&!note){miss.push(el);return}
         if(status==='problem')problems++;
-        results.push({section:sec.name,item_id:it.id,label:it.label,type:it.type,expected:it.expected==null?null:it.expected,status:status,count:count,note:note});
+        results.push({section:sec.name,item_id:it.id,label:it.label,type:it.type,freq:isMonthly(it)?'monthly':'weekly',expected:it.expected==null?null:it.expected,status:status,count:count,note:note});
       });
     });
     var fe=f.querySelector('.ferr');
@@ -334,7 +350,7 @@ const SUPABASE_ANON_KEY = "sb_publishable_kRyDgkUBY0Ib7iYfYs_2gQ_P3jx5u_E";
       order.forEach(function(s){
         h+='<tr><th colspan="3">'+esc(s)+'</th></tr>';
         by[s].forEach(function(x){
-          h+='<tr><td>'+esc(x.label)+'</td><td class="st '+(x.status==='problem'?'bad':'ok')+'">'+(x.type==='count'?esc(x.count)+(x.expected!=null?' of '+esc(x.expected):''):(x.status==='problem'?'Problem':'OK'))+(x.type==='count'&&x.status==='problem'?' (short)':'')+'</td><td class="note">'+esc(x.note||'')+'</td></tr>';
+          h+='<tr><td>'+esc(x.label)+(x.freq==='monthly'?'<span class="tag">Monthly</span>':'')+'</td><td class="st '+(x.status==='problem'?'bad':'ok')+'">'+(x.type==='count'?esc(x.count)+(x.expected!=null?' of '+esc(x.expected):''):(x.status==='problem'?'Problem':'OK'))+(x.type==='count'&&x.status==='problem'?' (short)':'')+'</td><td class="note">'+esc(x.note||'')+'</td></tr>';
         });
       });
       h+='</tbody></table></div>';
@@ -344,10 +360,10 @@ const SUPABASE_ANON_KEY = "sb_publishable_kRyDgkUBY0Ib7iYfYs_2gQ_P3jx5u_E";
     return h+'<p class="note">Showing the latest 200 checks.</p></div>';
   }
   function exportCsv(){
-    var lines=[['Date','Rig','Checked by','Section','Item','Result','Count','Expected','Item note','Out of service','Overall note','Mileage','Engine hours'].map(csvQ).join(',')];
+    var lines=[['Date','Rig','Checked by','Section','Item','Result','Count','Expected','Item note','Out of service','Overall note','Mileage','Engine hours','Frequency'].map(csvQ).join(',')];
     checks.filter(function(c){return !histRig||c.rig_id===histRig}).forEach(function(c){
       (c.results||[]).forEach(function(x){
-        lines.push([fmtDT(c.checked_at),c.rig_name,c.checked_by,x.section,x.label,x.status==='problem'?'Problem':'OK',x.count==null?'':x.count,x.expected==null?'':x.expected,x.note||'',c.oos?'Yes':'No',c.note||'',c.mileage==null?'':c.mileage,c.engine_hours==null?'':c.engine_hours].map(csvQ).join(','));
+        lines.push([fmtDT(c.checked_at),c.rig_name,c.checked_by,x.section,x.label,x.status==='problem'?'Problem':'OK',x.count==null?'':x.count,x.expected==null?'':x.expected,x.note||'',c.oos?'Yes':'No',c.note||'',c.mileage==null?'':c.mileage,c.engine_hours==null?'':c.engine_hours,x.freq==='monthly'?'Monthly':'Weekly'].map(csvQ).join(','));
       });
     });
     var blob=new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
@@ -369,16 +385,16 @@ const SUPABASE_ANON_KEY = "sb_publishable_kRyDgkUBY0Ib7iYfYs_2gQ_P3jx5u_E";
     return h;
   }
   function setupRig(g){
-    var s='<details data-id="'+g.id+'"'+(openIds[g.id]?' open':'')+'><summary><div><b>'+esc(g.name)+'</b></div><span>'+(g.checklist||[]).length+' sections · '+items(g)+' items</span></summary><div data-rig="'+g.id+'">';
-    s+='<div class="row"><label>Name<input data-f="rname" value="'+esc(g.name)+'" maxlength="30"></label><label>Check every (days)<input data-f="rint" type="number" min="1" max="365" value="'+(g.interval_days||7)+'"></label></div>';
+    var s='<details data-id="'+g.id+'"'+(openIds[g.id]?' open':'')+'><summary><div><b>'+esc(g.name)+'</b></div><span>'+(g.checklist||[]).length+' sections · '+items(g)+' items'+(monthlyStats(g).total?' ('+monthlyStats(g).total+' monthly)':'')+'</span></summary><div data-rig="'+g.id+'">';
+    s+='<div class="row"><label>Name<input data-f="rname" value="'+esc(g.name)+'" maxlength="30"></label><label>Weekly check due every (days)<input data-f="rint" type="number" min="1" max="365" value="'+(g.interval_days||7)+'"></label></div>';
     (g.checklist||[]).forEach(function(sec,si){
-      s+='<div class="sec" data-s="'+si+'"><div class="flex"><input data-f="sname" value="'+esc(sec.name)+'" maxlength="60" style="flex:1;margin:0;font-weight:700" aria-label="Section name"><button class="sm" data-act="secup">&uarr;</button><button class="sm" data-act="secdown">&darr;</button><button class="x" data-act="delsec">Delete section</button></div><div style="margin-top:8px">';
+      s+='<div class="sec" data-s="'+si+'"><div class="flex"><input data-f="sname" value="'+esc(sec.name)+'" maxlength="60" style="flex:1;margin:0;font-weight:700" aria-label="Section name"><select data-f="sfreq" aria-label="Set all items" style="margin:0;max-width:130px"><option value="">Set all items...</option><option value="weekly">All weekly</option><option value="monthly">All monthly</option></select><button class="sm" data-act="secup">&uarr;</button><button class="sm" data-act="secdown">&darr;</button><button class="x" data-act="delsec">Delete section</button></div><div style="margin-top:8px">';
       (sec.items||[]).forEach(function(it,ii){
-        s+='<div class="irow" data-i="'+ii+'"><input data-f="ilabel" value="'+esc(it.label)+'" maxlength="120" aria-label="Item"><select data-f="itype" aria-label="Type"><option value="ok"'+(it.type!=='count'?' selected':'')+'>OK / Problem</option><option value="count"'+(it.type==='count'?' selected':'')+'>Count</option></select>'+
+        s+='<div class="irow" data-i="'+ii+'"><input data-f="ilabel" value="'+esc(it.label)+'" maxlength="120" aria-label="Item"><select data-f="itype" aria-label="Type"><option value="ok"'+(it.type!=='count'?' selected':'')+'>OK / Problem</option><option value="count"'+(it.type==='count'?' selected':'')+'>Count</option></select><select data-f="ifreq" aria-label="How often"><option value="weekly"'+(!isMonthly(it)?' selected':'')+'>Weekly</option><option value="monthly"'+(isMonthly(it)?' selected':'')+'>Monthly</option></select>'+
           (it.type==='count'?'<input data-f="iexp" type="number" min="0" value="'+(it.expected==null?'':it.expected)+'" placeholder="Expected" aria-label="Expected count">':'<span></span>')+
           '<div class="btns"><button class="sm" data-act="iup">&uarr;</button><button class="sm" data-act="idown">&darr;</button><button class="x" data-act="delitem">Remove</button></div></div>';
       });
-      s+='</div><label style="margin-top:8px">Add items (one per line)<textarea data-add placeholder="Halligan&#10;Flathead axe&#10;Pike pole"></textarea></label><button class="btn ghost" data-act="additems">Add these items</button></div>';
+      s+='</div><label style="margin-top:8px">Add items (one per line)<textarea data-add placeholder="Halligan&#10;Flathead axe&#10;Pike pole"></textarea></label><div class="flex"><select data-addfreq style="margin:0;max-width:150px" aria-label="New items are"><option value="weekly">New items: weekly</option><option value="monthly">New items: monthly</option></select><button class="btn ghost" data-act="additems">Add these items</button></div></div>';
     });
     s+='<div class="flex" style="margin:10px 0"><input data-newsec placeholder="New section, e.g. Driver side compartment 1" maxlength="60" style="flex:1;margin:0"><button class="btn" data-act="addsec">Add section</button></div>';
     var others=rigs.filter(function(o){return o.id!==g.id&&(o.checklist||[]).length});
@@ -424,6 +440,7 @@ const SUPABASE_ANON_KEY = "sb_publishable_kRyDgkUBY0Ib7iYfYs_2gQ_P3jx5u_E";
   app.addEventListener('change',function(e){
     var t=e.target;
     if(t.id==='checkRig'){checkRig=t.value;formDirty=false;render();return}
+    if(t.id==='showMonthly'){showMonthly=t.checked;formDirty=false;render();return}
     if(t.id==='histRig'){histRig=t.value;render();return}
     var box=t.closest&&t.closest('[data-rig]');
     if(!box||!t.dataset.f||!isAdmin())return;
@@ -436,6 +453,8 @@ const SUPABASE_ANON_KEY = "sb_publishable_kRyDgkUBY0Ib7iYfYs_2gQ_P3jx5u_E";
     else if(f==='sname'&&sec){sec.name=v.trim()||sec.name}
     else if(f==='ilabel'&&it){it.label=v.trim()||it.label}
     else if(f==='itype'&&it){it.type=v==='count'?'count':'ok';if(it.type==='ok')it.expected=null}
+    else if(f==='ifreq'&&it){it.freq=v==='monthly'?'monthly':'weekly'}
+    else if(f==='sfreq'&&sec){if(!v)return;(sec.items||[]).forEach(function(x){x.freq=v})}
     else if(f==='iexp'&&it){it.expected=v===''?null:Math.max(0,parseInt(v,10)||0)}
     saveRig(g);
   });
@@ -474,7 +493,7 @@ const SUPABASE_ANON_KEY = "sb_publishable_kRyDgkUBY0Ib7iYfYs_2gQ_P3jx5u_E";
     else if(act==='additems'&&sec){
       var ta=secEl.querySelector('textarea[data-add]'),lines=ta.value.split('\n').map(function(x){return x.trim()}).filter(Boolean);
       if(!lines.length)return;
-      sec.items=(sec.items||[]).concat(lines.map(function(l){return mk(l,'ok')}));saveRig(g);
+      sec.items=(sec.items||[]).concat(lines.map(function(l){return mk(l,'ok',null,secEl.querySelector('[data-addfreq]').value)}));saveRig(g);
     }
     else if(act==='addsec'){
       var inp=box.querySelector('[data-newsec]'),nm2=inp.value.trim();if(!nm2)return;
@@ -482,7 +501,7 @@ const SUPABASE_ANON_KEY = "sb_publishable_kRyDgkUBY0Ib7iYfYs_2gQ_P3jx5u_E";
     }
     else if(act==='copy'){
       var sel=box.querySelector('[data-copyfrom]'),src=R(sel.value);if(!src)return;
-      (src.checklist||[]).forEach(function(s2){g.checklist.push({id:uid(),name:s2.name,items:(s2.items||[]).map(function(i2){return mk(i2.label,i2.type,i2.expected)})})});
+      (src.checklist||[]).forEach(function(s2){g.checklist.push({id:uid(),name:s2.name,items:(s2.items||[]).map(function(i2){return mk(i2.label,i2.type,i2.expected,i2.freq)})})});
       saveRig(g);
     }
     else if(act==='delrig'){arm(t,'r'+g.id,'',function(){
